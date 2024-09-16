@@ -1,0 +1,118 @@
+# How to use this script
+# HideUVNCTrayIcon.ps1 <Download_URL>  
+
+param(
+    [string]$URL,
+    [string]$filename
+)
+
+$ScriptRoot = $PSScriptRoot
+if ([string]::IsNullOrEmpty($ScriptRoot)) {
+    $ScriptRoot = Split-Path $MyInvocation.MyCommand.Path -Parent
+}
+
+$LogDir = "$ScriptRoot"
+$LogFile = "$LogDir\HideUVNCTrayIcon.Log"
+$ERROR_SUCCESS = 0
+$ERROR_FAILED = 1
+$ERROR_EXCEPTION_OCCURED = -1
+$DownloadPath = "$ScriptRoot\"
+
+
+$ERROR_PS_VER_LOWER = 20008
+$versionMinimum = [Version]'3.0.99999.999'
+Function ExitIfPSVersionLower {
+
+    Log -logstring ("Info: PowerShell version is: " + $PSVersionTable.PSVersion)
+
+    if ($versionMinimum -gt $PSVersionTable.PSVersion) {
+        Log -logstring "Error: This script requires minimun PowerShell version: $versionMinimum"
+        Exit $ERROR_PS_VER_LOWER
+    }
+}
+
+Function CreateLogDir {
+    If (!(Test-Path $LogDir)) {
+        mkdir $LogDir | out-null
+    }
+}
+Function Log {
+    param(
+        [Parameter(Mandatory = $true)][string]$logstring
+    )
+
+    $Logtime = Get-Date -Format "dd/MM/yyyy HH:mm:ss:fff"
+    $logToWrite = "{$Logtime[PID:$PID]} : $logstring"
+    Write-Host($logToWrite)
+    Add-content $LogFile -value ($logToWrite)            
+}
+
+trap {
+    Log -logstring "Exception occured in HideUVNCTrayIcon Script"
+    $message = $Error[0].Exception.Message
+    if ($message) {
+        Log -logstring "EXCEPTION: $message"
+    }
+
+    Log -logstring "Exit from HideUVNCTrayIcon Script With Exitcode=$ERROR_EXCEPTION_OCCURED `r`n`r`n"
+    exit $ERROR_EXCEPTION_OCCURED
+}
+
+function DownloadFile {
+
+    if ([string]::IsNullOrEmpty($URL)) {
+        Log -logstring "Error: file URL is not specified"
+        $DownloadPath = ""
+        return $DownloadPath
+    }
+
+    Log -logstring  "Download URL: $URL"
+    
+    #[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls11
+
+    #Log -logstring "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls11"
+
+    if ([string]::IsNullOrEmpty($filename)) {
+        $filename = "HideUVNCTrayIcon.exe" 
+    }
+
+    $DownloadPath = ($DownloadPath + $filename)
+    Log -logstring  "Download Path: $DownloadPath"
+    Invoke-WebRequest -Uri $URL -OutFile $DownloadPath -UseBasicParsing
+
+    if (!(Test-Path $DownloadPath)) {
+        Log -logstring ("Error: Failed to download file. Path: " + $DownloadPath)
+        $DownloadPath = ""
+    } 
+
+    return $DownloadPath
+}
+
+try {
+    Push-Location $ScriptRoot
+    # Create Log directory
+    CreateLogDir
+    Log -logstring "Inside HideUVNCTrayIcon Script"
+    ExitIfPSVersionLower
+
+    $DownloadPath = DownloadFile
+    if (![string]::IsNullOrEmpty($DownloadPath)) {
+        Log -logstring "Download Success: $DownloadPath"
+        $ReturnValue = $ERROR_SUCCESS
+
+        # Hide Tray Icon
+        & $DownloadPath 1
+
+        #Show Tray Icon
+        # & $DownloadPath 0
+    }
+    else {
+        Log -logstring "Download Failed"
+        $ReturnValue = $ERROR_FAILED
+    }
+    Log -logstring "Exit from HideUVNCTrayIcon Script with Exitcode = $ReturnValue `r`n`r`n"
+    Exit $ReturnValue
+}
+finally {
+    Pop-Location
+}
